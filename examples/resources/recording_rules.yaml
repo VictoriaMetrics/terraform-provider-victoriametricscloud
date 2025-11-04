@@ -1,0 +1,6 @@
+groups:
+  - name: "recording-rules"
+    interval: "30s"
+    rules:
+      - record: "request_duration_seconds:5m"
+        expr: "avg(rate(request_duration_seconds[5m])) by (job)"

@@ -1,0 +1,69 @@
+.terraform*
+terraform.tfstate*
+
+terraform-provider-victorimetricscloud
+
+secrets.tfvars
+dev/
+*.backup
+
+**/variables.tfvars
+
+/tmp
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+terraform-provider-*
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.out
+
+# Go workspace file
+go.work
+
+# Terraform files
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+crash.*.log
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+bin/
+
+# Terraform debug logs
+terraform-debug.log
+TF_LOG*
+
+# Provider override config
+override.tfrc
+.terraformrc.d/
+
+# Example outputs
+examples/**/.terraform/
+examples/**/.terraform.lock.hcl
+examples/**/terraform.tfstate
+examples/**/terraform.tfstate.*
+examples/**/terraform.tfvars
