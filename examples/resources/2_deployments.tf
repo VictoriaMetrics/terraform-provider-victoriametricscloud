@@ -12,11 +12,6 @@ resource "victoriametricscloud_deployment" "single_demo" {
   deduplication      = 30
   deduplication_unit = "s"
   maintenance_window = "Sat-Sun 3-4am"
-
-  # Custom flags for cluster components
-  single_flags = [
-    "-search.maxQueryDuration=360s",
-  ]
 }
 
 output "deployment_id" {

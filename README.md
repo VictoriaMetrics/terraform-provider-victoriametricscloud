@@ -1,6 +1,6 @@
 # Terraform Provider for VictoriaMetrics Cloud
 
-Manage VictoriaMetrics Cloud deployments, access tokens, and rule files with Terraform. 
+Manage [VictoriaMetrics Cloud](https://victoriametrics.cloud/) deployments, access tokens, and rule files with Terraform. 
 This provider wraps the [VictoriaMetrics Cloud API](https://docs.victoriametrics.com/victoriametrics-cloud/api/) and exposes both resources and data sources so you can manage infrastructure as code alongside the rest of your stack.
 
 ## Getting Started
