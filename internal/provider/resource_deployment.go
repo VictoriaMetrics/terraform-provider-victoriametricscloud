@@ -79,7 +79,7 @@ func (r *deploymentResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Required:    true,
 			},
 			"type": schema.StringAttribute{
-				Description: "Type of the deployment. Valid values: 'single_node', 'cluster'.",
+				Description: "Type of the deployment. Valid values: 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces).",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
@@ -120,12 +120,14 @@ func (r *deploymentResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Required:    true,
 			},
 			"deduplication": schema.Int64Attribute{
-				Description: "Deduplication window for the deployment.",
-				Required:    true,
+				Description: "Deduplication window for the deployment. Required for 'single_node' and 'cluster' deployments; ignored for 'vlogs_single' and 'vtraces_single', which have no deduplication window.",
+				Optional:    true,
+				Computed:    true,
 			},
 			"deduplication_unit": schema.StringAttribute{
-				Description: "Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds).",
-				Required:    true,
+				Description: "Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds). Required for 'single_node' and 'cluster' deployments; ignored for 'vlogs_single' and 'vtraces_single'.",
+				Optional:    true,
+				Computed:    true,
 			},
 			"maintenance_window": schema.StringAttribute{
 				Description: "Maintenance window for the deployment. Valid values: 'Sat-Sun 3-4am', 'Mon-Fri 4-5am'.",
@@ -204,6 +206,7 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 
 	// Create the deployment
+	dedup, dedupUnit := deduplicationPointers(plan.Deduplication, plan.DeduplicationUnit)
 	createRequest := vmcloudapi.DeploymentCreationRequest{
 		Name:              plan.Name.ValueString(),
 		Type:              vmcloudapi.DeploymentType(plan.Type.ValueString()),
@@ -214,8 +217,8 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 		StorageSizeUnit:   vmcloudapi.StorageUnit(plan.StorageSizeUnit.ValueString()),
 		Retention:         uint32(plan.Retention.ValueInt64()),
 		RetentionUnit:     vmcloudapi.DurationUnit(plan.RetentionUnit.ValueString()),
-		Deduplication:     uint32(plan.Deduplication.ValueInt64()),
-		DeduplicationUnit: vmcloudapi.DurationUnit(plan.DeduplicationUnit.ValueString()),
+		Deduplication:     dedup,
+		DeduplicationUnit: dedupUnit,
 		MaintenanceWindow: vmcloudapi.MaintenanceWindow(plan.MaintenanceWindow.ValueString()),
 	}
 
@@ -234,6 +237,13 @@ func (r *deploymentResource) Create(ctx context.Context, req resource.CreateRequ
 	plan.Status = types.StringValue(deployment.Status.String())
 	plan.CreatedAt = types.StringValue(deployment.CreatedAt.Format(time.RFC3339))
 	plan.AccessEndpoint = types.StringValue(deployment.AccessEndpoint)
+	if value, unit, ok := deployment.Deduplication(); ok {
+		plan.Deduplication = types.Int64Value(int64(value))
+		plan.DeduplicationUnit = types.StringValue(string(unit))
+	} else {
+		plan.Deduplication = types.Int64Null()
+		plan.DeduplicationUnit = types.StringNull()
+	}
 
 	tflog.Trace(ctx, "created deployment", map[string]any{"id": deployment.ID})
 
@@ -268,8 +278,13 @@ func (r *deploymentResource) Read(ctx context.Context, req resource.ReadRequest,
 	state.Tier = types.Int64Value(int64(deployment.Tier))
 	state.Retention = types.Int64Value(int64(deployment.RetentionValue))
 	state.RetentionUnit = types.StringValue(string(deployment.RetentionUnit))
-	state.Deduplication = types.Int64Value(int64(deployment.DeduplicationValue))
-	state.DeduplicationUnit = types.StringValue(string(deployment.DeduplicationUnit))
+	if value, unit, ok := deployment.Deduplication(); ok {
+		state.Deduplication = types.Int64Value(int64(value))
+		state.DeduplicationUnit = types.StringValue(string(unit))
+	} else {
+		state.Deduplication = types.Int64Null()
+		state.DeduplicationUnit = types.StringNull()
+	}
 	state.MaintenanceWindow = types.StringValue(string(deployment.MaintenanceWindow))
 	state.Version = types.StringValue(deployment.Version)
 	state.Status = types.StringValue(deployment.Status.String())
@@ -329,6 +344,7 @@ func (r *deploymentResource) Update(ctx context.Context, req resource.UpdateRequ
 	}
 
 	// Update the deployment
+	dedup, dedupUnit := deduplicationPointers(plan.Deduplication, plan.DeduplicationUnit)
 	updateRequest := vmcloudapi.DeploymentUpdateRequest{
 		Name:              plan.Name.ValueString(),
 		Tier:              uint32(plan.Tier.ValueInt64()),
@@ -336,8 +352,8 @@ func (r *deploymentResource) Update(ctx context.Context, req resource.UpdateRequ
 		StorageSizeUnit:   vmcloudapi.StorageUnit(plan.StorageSizeUnit.ValueString()),
 		Retention:         uint32(plan.Retention.ValueInt64()),
 		RetentionUnit:     vmcloudapi.DurationUnit(plan.RetentionUnit.ValueString()),
-		Deduplication:     uint32(plan.Deduplication.ValueInt64()),
-		DeduplicationUnit: vmcloudapi.DurationUnit(plan.DeduplicationUnit.ValueString()),
+		Deduplication:     dedup,
+		DeduplicationUnit: dedupUnit,
 		MaintenanceWindow: vmcloudapi.MaintenanceWindow(plan.MaintenanceWindow.ValueString()),
 		Flags:             flags,
 	}
@@ -355,6 +371,13 @@ func (r *deploymentResource) Update(ctx context.Context, req resource.UpdateRequ
 	plan.Version = types.StringValue(deployment.Version)
 	plan.Status = types.StringValue(deployment.Status.String())
 	plan.AccessEndpoint = types.StringValue(deployment.AccessEndpoint)
+	if value, unit, ok := deployment.Deduplication(); ok {
+		plan.Deduplication = types.Int64Value(int64(value))
+		plan.DeduplicationUnit = types.StringValue(string(unit))
+	} else {
+		plan.Deduplication = types.Int64Null()
+		plan.DeduplicationUnit = types.StringNull()
+	}
 
 	tflog.Trace(ctx, "updated deployment", map[string]any{"id": deployment.ID})
 
@@ -388,4 +411,13 @@ func (r *deploymentResource) Delete(ctx context.Context, req resource.DeleteRequ
 func (r *deploymentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	// Retrieve import ID and save to id attribute
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func deduplicationPointers(dedup types.Int64, dedupUnit types.String) (*uint32, *vmcloudapi.DurationUnit) {
+	if dedup.IsNull() || dedupUnit.IsNull() {
+		return nil, nil
+	}
+	value := uint32(dedup.ValueInt64())
+	unit := vmcloudapi.DurationUnit(dedupUnit.ValueString())
+	return &value, &unit
 }

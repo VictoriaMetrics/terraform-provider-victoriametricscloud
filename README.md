@@ -32,7 +32,7 @@ provider "victoriametricscloud" {
 ## Supported Resources
 | Resource                            | Purpose                                                                                                                                             |
 |-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
-| `victoriametricscloud_deployment`   | Provisions single-node or cluster VictoriaMetrics deployments, including retention, deduplication, maintenance windows, and custom component flags. |
+| `victoriametricscloud_deployment`   | Provisions single-node or cluster VictoriaMetrics, VictoriaLogs, or VictoriaTraces deployments, including retention, deduplication, maintenance windows, and custom component flags. |
 | `victoriametricscloud_access_token` | Manages scoped access tokens (`r`, `w`, or `rw`) for a deployment, optionally targeting a cluster tenant.                                           |
 | `victoriametricscloud_rule_file`    | Uploads and manages alerting/recording rule files associated with a deployment.                                                                     |
 

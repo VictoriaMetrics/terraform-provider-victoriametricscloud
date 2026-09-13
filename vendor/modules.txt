@@ -1,5 +1,5 @@
-# github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.1.3
-## explicit; go 1.26
+# github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.1.4-0.20260914133435-9ccfefdc0415
+## explicit; go 1.26.7
 github.com/VictoriaMetrics/victoriametrics-cloud-api-go/v1
 # github.com/fatih/color v1.19.0
 ## explicit; go 1.25.0
