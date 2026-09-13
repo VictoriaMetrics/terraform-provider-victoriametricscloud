@@ -29,6 +29,7 @@ type deploymentsDataSource struct {
 
 // deploymentsDataSourceModel maps the data source schema data.
 type deploymentsDataSourceModel struct {
+	Type        types.String             `tfsdk:"type"`
 	Deployments []deploymentSummaryModel `tfsdk:"deployments"`
 }
 
@@ -55,6 +56,10 @@ func (d *deploymentsDataSource) Schema(_ context.Context, _ datasource.SchemaReq
 	resp.Schema = schema.Schema{
 		Description: "Fetches the list of VictoriaMetrics Cloud deployments.",
 		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				Description: "Restrict the results to a single deployment type. Valid values: 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces). Deployments of every type are returned when unset.",
+				Optional:    true,
+			},
 			"deployments": schema.ListNestedAttribute{
 				Description: "List of deployments.",
 				Computed:    true,
@@ -124,9 +129,19 @@ func (d *deploymentsDataSource) Configure(_ context.Context, req datasource.Conf
 // Read refreshes the Terraform state with the latest data.
 func (d *deploymentsDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state deploymentsDataSourceModel
+	diags := req.Config.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	state.Deployments = []deploymentSummaryModel{}
 
-	deployments, err := d.client.ListDeployments(ctx)
+	var options []vmcloudapi.ListOption
+	if !state.Type.IsNull() {
+		options = append(options, vmcloudapi.WithDeploymentType(vmcloudapi.DeploymentType(state.Type.ValueString())))
+	}
+
+	deployments, err := d.client.ListDeployments(ctx, options...)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Read Deployments",
@@ -152,6 +167,6 @@ func (d *deploymentsDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 
 	// Set state
-	diags := resp.State.Set(ctx, &state)
+	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 }
