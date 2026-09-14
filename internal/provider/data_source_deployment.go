@@ -69,7 +69,7 @@ func (d *deploymentDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Computed:    true,
 			},
 			"type": schema.StringAttribute{
-				Description: "Type of the deployment.",
+				Description: "Type of the deployment. One of 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces).",
 				Computed:    true,
 			},
 			"cloud_provider": schema.StringAttribute{
@@ -93,11 +93,11 @@ func (d *deploymentDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Computed:    true,
 			},
 			"deduplication": schema.Int64Attribute{
-				Description: "Deduplication window.",
+				Description: "Deduplication window. Not set for 'vlogs_single' and 'vtraces_single' deployments, which have no deduplication window.",
 				Computed:    true,
 			},
 			"deduplication_unit": schema.StringAttribute{
-				Description: "Deduplication window unit.",
+				Description: "Deduplication window unit. Not set for 'vlogs_single' and 'vtraces_single' deployments.",
 				Computed:    true,
 			},
 			"maintenance_window": schema.StringAttribute{
@@ -186,8 +186,13 @@ func (d *deploymentDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	state.Tier = types.Int64Value(int64(deployment.Tier))
 	state.Retention = types.Int64Value(int64(deployment.RetentionValue))
 	state.RetentionUnit = types.StringValue(string(deployment.RetentionUnit))
-	state.Deduplication = types.Int64Value(int64(deployment.DeduplicationValue))
-	state.DeduplicationUnit = types.StringValue(string(deployment.DeduplicationUnit))
+	if value, unit, ok := deployment.Deduplication(); ok {
+		state.Deduplication = types.Int64Value(int64(value))
+		state.DeduplicationUnit = types.StringValue(string(unit))
+	} else {
+		state.Deduplication = types.Int64Null()
+		state.DeduplicationUnit = types.StringNull()
+	}
 	state.MaintenanceWindow = types.StringValue(string(deployment.MaintenanceWindow))
 	state.Version = types.StringValue(deployment.Version)
 	state.Status = types.StringValue(deployment.Status.String())
