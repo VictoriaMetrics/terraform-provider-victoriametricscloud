@@ -12,7 +12,7 @@ terraform {
   required_providers {
     victoriametricscloud = {
       source  = "VictoriaMetrics/victoriametricscloud"
-      version = "0.0.1"
+      version = "0.1.0"
     }
   }
 }
