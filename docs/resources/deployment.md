@@ -18,8 +18,6 @@ Manages a VictoriaMetrics Cloud deployment.
 ### Required
 
 - `cloud_provider` (String) Cloud provider for the deployment. Valid values: 'aws'.
-- `deduplication` (Number) Deduplication window for the deployment.
-- `deduplication_unit` (String) Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds).
 - `maintenance_window` (String) Maintenance window for the deployment. Valid values: 'Sat-Sun 3-4am', 'Mon-Fri 4-5am'.
 - `name` (String) Human-readable name of the deployment.
 - `region` (String) Region of the deployment in the cloud provider.
@@ -28,19 +26,50 @@ Manages a VictoriaMetrics Cloud deployment.
 - `storage_size` (Number) Storage size in units specified in storage_size_unit.
 - `storage_size_unit` (String) Storage size unit. Valid values: 'GB', 'TB'.
 - `tier` (Number) Tier identifier for the deployment.
-- `type` (String) Type of the deployment. Valid values: 'single_node', 'cluster'.
+- `type` (String) Type of the deployment. Valid values: 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces).
 
 ### Optional
 
-- `insert_flags` (List of String) Custom command-line flags for the vminsert component.
-- `select_flags` (List of String) Custom command-line flags for the vmselect component.
-- `single_flags` (List of String) Custom command-line flags for the vmsingle component.
-- `storage_flags` (List of String) Custom command-line flags for the vmstorage component.
+- `deduplication` (Number, Deprecated) Deduplication window for the deployment. Required for 'single_node' and 'cluster' deployments; ignored for 'vlogs_single' and 'vtraces_single', which have no deduplication window.
+- `deduplication_unit` (String, Deprecated) Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds). Required for 'single_node' and 'cluster' deployments; ignored for 'vlogs_single' and 'vtraces_single'.
+- `insert_flags` (List of String, Deprecated) Custom command-line flags for the vminsert component.
+- `select_flags` (List of String, Deprecated) Custom command-line flags for the vmselect component.
+- `single_flags` (List of String, Deprecated) Custom command-line flags for the vmsingle component.
+- `storage_flags` (List of String, Deprecated) Custom command-line flags for the vmstorage component.
 
 ### Read-Only
 
 - `access_endpoint` (String) API endpoint URL for the deployment.
+- `cluster` (Attributes) Settings specific to 'cluster' deployments. Null for other deployment types. (see [below for nested schema](#nestedatt--cluster))
 - `created_at` (String) Timestamp of deployment creation.
 - `id` (String) Unique identifier of the deployment.
+- `metrics` (Attributes) Settings specific to 'single_node' and 'cluster' deployments. Null for other deployment types. (see [below for nested schema](#nestedatt--metrics))
+- `single` (Attributes) Settings specific to 'single_node', 'vlogs_single' and 'vtraces_single' deployments. Null for 'cluster' deployments. (see [below for nested schema](#nestedatt--single))
 - `status` (String) Current status of the deployment.
 - `version` (String) Version of VictoriaMetrics used in the deployment.
+
+<a id="nestedatt--cluster"></a>
+### Nested Schema for `cluster`
+
+Read-Only:
+
+- `insert_flags` (List of String) Custom command-line flags for the vminsert component.
+- `select_flags` (List of String) Custom command-line flags for the vmselect component.
+- `storage_flags` (List of String) Custom command-line flags for the vmstorage component.
+
+
+<a id="nestedatt--metrics"></a>
+### Nested Schema for `metrics`
+
+Read-Only:
+
+- `deduplication` (Number) Deduplication window for the deployment.
+- `deduplication_unit` (String) Deduplication window unit.
+
+
+<a id="nestedatt--single"></a>
+### Nested Schema for `single`
+
+Read-Only:
+
+- `flags` (List of String) Custom command-line flags for the vmsingle component.

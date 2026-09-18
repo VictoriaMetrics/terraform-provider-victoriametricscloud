@@ -29,25 +29,26 @@ type deploymentDataSource struct {
 
 // deploymentDataSourceModel maps the data source schema data.
 type deploymentDataSourceModel struct {
-	ID                types.String  `tfsdk:"id"`
-	Name              types.String  `tfsdk:"name"`
-	Type              types.String  `tfsdk:"type"`
-	CloudProvider     types.String  `tfsdk:"cloud_provider"`
-	Region            types.String  `tfsdk:"region"`
-	Tier              types.Int64   `tfsdk:"tier"`
-	Retention         types.Int64   `tfsdk:"retention"`
-	RetentionUnit     types.String  `tfsdk:"retention_unit"`
-	Deduplication     types.Int64   `tfsdk:"deduplication"`
-	DeduplicationUnit types.String  `tfsdk:"deduplication_unit"`
-	MaintenanceWindow types.String  `tfsdk:"maintenance_window"`
-	Version           types.String  `tfsdk:"version"`
-	Status            types.String  `tfsdk:"status"`
-	CreatedAt         types.String  `tfsdk:"created_at"`
-	AccessEndpoint    types.String  `tfsdk:"access_endpoint"`
-	StorageSizeGb     types.Int64   `tfsdk:"storage_size_gb"`
-	ComputeCost       types.Float64 `tfsdk:"compute_cost"`
-	StorageCost       types.Float64 `tfsdk:"storage_cost"`
-	TotalCost         types.Float64 `tfsdk:"total_cost"`
+	ID                types.String            `tfsdk:"id"`
+	Name              types.String            `tfsdk:"name"`
+	Type              types.String            `tfsdk:"type"`
+	CloudProvider     types.String            `tfsdk:"cloud_provider"`
+	Region            types.String            `tfsdk:"region"`
+	Tier              types.Int64             `tfsdk:"tier"`
+	Retention         types.Int64             `tfsdk:"retention"`
+	RetentionUnit     types.String            `tfsdk:"retention_unit"`
+	Deduplication     types.Int64             `tfsdk:"deduplication"`
+	DeduplicationUnit types.String            `tfsdk:"deduplication_unit"`
+	MaintenanceWindow types.String            `tfsdk:"maintenance_window"`
+	Version           types.String            `tfsdk:"version"`
+	Status            types.String            `tfsdk:"status"`
+	CreatedAt         types.String            `tfsdk:"created_at"`
+	AccessEndpoint    types.String            `tfsdk:"access_endpoint"`
+	StorageSizeGb     types.Int64             `tfsdk:"storage_size_gb"`
+	ComputeCost       types.Float64           `tfsdk:"compute_cost"`
+	StorageCost       types.Float64           `tfsdk:"storage_cost"`
+	TotalCost         types.Float64           `tfsdk:"total_cost"`
+	Metrics           *deploymentMetricsModel `tfsdk:"metrics"`
 }
 
 // Metadata returns the data source type name.
@@ -69,7 +70,7 @@ func (d *deploymentDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Computed:    true,
 			},
 			"type": schema.StringAttribute{
-				Description: "Type of the deployment.",
+				Description: "Type of the deployment. One of 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces).",
 				Computed:    true,
 			},
 			"cloud_provider": schema.StringAttribute{
@@ -93,12 +94,28 @@ func (d *deploymentDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Computed:    true,
 			},
 			"deduplication": schema.Int64Attribute{
-				Description: "Deduplication window.",
-				Computed:    true,
+				Description:        "Deduplication window. Not set for 'vlogs_single' and 'vtraces_single' deployments, which have no deduplication window.",
+				Computed:           true,
+				DeprecationMessage: "Use metrics.deduplication instead.",
 			},
 			"deduplication_unit": schema.StringAttribute{
-				Description: "Deduplication window unit.",
+				Description:        "Deduplication window unit. Not set for 'vlogs_single' and 'vtraces_single' deployments.",
+				Computed:           true,
+				DeprecationMessage: "Use metrics.deduplication_unit instead.",
+			},
+			"metrics": schema.SingleNestedAttribute{
+				Description: "Settings specific to 'single_node' and 'cluster' deployments. Null for other deployment types.",
 				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"deduplication": schema.Int64Attribute{
+						Description: "Deduplication window for the deployment.",
+						Computed:    true,
+					},
+					"deduplication_unit": schema.StringAttribute{
+						Description: "Deduplication window unit.",
+						Computed:    true,
+					},
+				},
 			},
 			"maintenance_window": schema.StringAttribute{
 				Description: "Maintenance window for the deployment.",
@@ -186,8 +203,14 @@ func (d *deploymentDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	state.Tier = types.Int64Value(int64(deployment.Tier))
 	state.Retention = types.Int64Value(int64(deployment.RetentionValue))
 	state.RetentionUnit = types.StringValue(string(deployment.RetentionUnit))
-	state.Deduplication = types.Int64Value(int64(deployment.DeduplicationValue))
-	state.DeduplicationUnit = types.StringValue(string(deployment.DeduplicationUnit))
+	if value, unit, ok := deployment.Deduplication(); ok {
+		state.Deduplication = types.Int64Value(int64(value))
+		state.DeduplicationUnit = types.StringValue(string(unit))
+	} else {
+		state.Deduplication = types.Int64Null()
+		state.DeduplicationUnit = types.StringNull()
+	}
+	state.Metrics = deduplicationMetrics(state.Deduplication, state.DeduplicationUnit)
 	state.MaintenanceWindow = types.StringValue(string(deployment.MaintenanceWindow))
 	state.Version = types.StringValue(deployment.Version)
 	state.Status = types.StringValue(deployment.Status.String())

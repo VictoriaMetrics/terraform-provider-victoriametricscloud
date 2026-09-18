@@ -28,22 +28,45 @@ type tiersDataSource struct {
 
 // tiersDataSourceModel maps the data source schema data.
 type tiersDataSourceModel struct {
-	Tiers []tierModel `tfsdk:"tiers"`
+	Type  types.String `tfsdk:"type"`
+	Tiers []tierModel  `tfsdk:"tiers"`
 }
 
 // tierModel maps tier data.
 type tierModel struct {
-	ID                            types.Int64   `tfsdk:"id"`
-	Type                          types.String  `tfsdk:"type"`
-	CloudProvider                 types.String  `tfsdk:"cloud_provider"`
-	Name                          types.String  `tfsdk:"name"`
-	ComputeCostPerHour            types.Float64 `tfsdk:"compute_cost_per_hour"`
-	IngestionRate                 types.Int64   `tfsdk:"ingestion_rate"`
-	ActiveTimeSeries              types.Int64   `tfsdk:"active_time_series"`
-	NewSeriesOver24h              types.Int64   `tfsdk:"new_series_over_24h"`
-	DatapointsReadRate            types.Int64   `tfsdk:"datapoints_read_rate"`
-	SeriesReadPerQuery            types.Int64   `tfsdk:"series_read_per_query"`
-	AccessTokenConcurrentRequests types.Int64   `tfsdk:"access_token_concurrent_requests"`
+	ID                            types.Int64             `tfsdk:"id"`
+	Type                          types.String            `tfsdk:"type"`
+	CloudProvider                 types.String            `tfsdk:"cloud_provider"`
+	Name                          types.String            `tfsdk:"name"`
+	ComputeCostPerHour            types.Float64           `tfsdk:"compute_cost_per_hour"`
+	IngestionRate                 types.Int64             `tfsdk:"ingestion_rate"`
+	ActiveTimeSeries              types.Int64             `tfsdk:"active_time_series"`
+	NewSeriesOver24h              types.Int64             `tfsdk:"new_series_over_24h"`
+	DatapointsReadRate            types.Int64             `tfsdk:"datapoints_read_rate"`
+	SeriesReadPerQuery            types.Int64             `tfsdk:"series_read_per_query"`
+	AccessTokenConcurrentRequests types.Int64             `tfsdk:"access_token_concurrent_requests"`
+	AccessTokenLimit              types.Int64             `tfsdk:"access_token_limit"`
+	Metrics                       *metricsTierLimitsModel `tfsdk:"metrics"`
+	Logs                          *streamsTierLimitsModel `tfsdk:"logs"`
+	Traces                        *streamsTierLimitsModel `tfsdk:"traces"`
+}
+
+// metricsTierLimitsModel maps the limits reported by single_node and cluster tiers.
+type metricsTierLimitsModel struct {
+	IngestionRate      types.Int64 `tfsdk:"ingestion_rate"`
+	ActiveTimeSeries   types.Int64 `tfsdk:"active_time_series"`
+	NewSeriesOver24h   types.Int64 `tfsdk:"new_series_over_24h"`
+	DatapointsReadRate types.Int64 `tfsdk:"datapoints_read_rate"`
+	SeriesReadPerQuery types.Int64 `tfsdk:"series_read_per_query"`
+}
+
+// streamsTierLimitsModel maps the limits reported by vlogs_single and vtraces_single tiers.
+type streamsTierLimitsModel struct {
+	IngestionRateBytes types.Int64 `tfsdk:"ingestion_rate_bytes"`
+	ActiveLogStreams   types.Int64 `tfsdk:"active_log_streams"`
+	NewStreamsOver24h  types.Int64 `tfsdk:"new_streams_over_24h"`
+	DataReadRate       types.Int64 `tfsdk:"data_read_rate"`
+	BytesPerQuery      types.Int64 `tfsdk:"bytes_per_query"`
 }
 
 // Metadata returns the data source type name.
@@ -56,6 +79,10 @@ func (d *tiersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 	resp.Schema = schema.Schema{
 		Description: "Fetches the list of available tiers for VictoriaMetrics Cloud deployments.",
 		Attributes: map[string]schema.Attribute{
+			"type": schema.StringAttribute{
+				Description: "Restrict the results to a single deployment type. Valid values: 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces). Tiers of every type are returned when unset.",
+				Optional:    true,
+			},
 			"tiers": schema.ListNestedAttribute{
 				Description: "List of available tiers.",
 				Computed:    true,
@@ -66,7 +93,7 @@ func (d *tiersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 							Computed:    true,
 						},
 						"type": schema.StringAttribute{
-							Description: "Type of deployment (single_node or cluster).",
+							Description: "Type of deployment ('single_node', 'cluster', 'vlogs_single', or 'vtraces_single').",
 							Computed:    true,
 						},
 						"cloud_provider": schema.StringAttribute{
@@ -82,32 +109,104 @@ func (d *tiersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 							Computed:    true,
 						},
 						"ingestion_rate": schema.Int64Attribute{
-							Description: "Maximum ingestion rate (samples per second).",
-							Computed:    true,
+							Description:        "Maximum ingestion rate (samples per second). Set for 'single_node' and 'cluster' tiers only.",
+							Computed:           true,
+							DeprecationMessage: "Use metrics.ingestion_rate instead.",
 						},
 						"active_time_series": schema.Int64Attribute{
-							Description: "Maximum number of active time series.",
-							Computed:    true,
+							Description:        "Maximum number of active time series. Set for 'single_node' and 'cluster' tiers only.",
+							Computed:           true,
+							DeprecationMessage: "Use metrics.active_time_series instead.",
 						},
 						"new_series_over_24h": schema.Int64Attribute{
-							Description: "Maximum number of new series over 24 hours.",
-							Computed:    true,
+							Description:        "Maximum number of new series over 24 hours. Set for 'single_node' and 'cluster' tiers only.",
+							Computed:           true,
+							DeprecationMessage: "Use metrics.new_series_over_24h instead.",
 						},
 						"datapoints_read_rate": schema.Int64Attribute{
-							Description: "Maximum datapoints read rate.",
-							Computed:    true,
+							Description:        "Maximum datapoints read rate. Set for 'single_node' and 'cluster' tiers only.",
+							Computed:           true,
+							DeprecationMessage: "Use metrics.datapoints_read_rate instead.",
 						},
 						"series_read_per_query": schema.Int64Attribute{
-							Description: "Maximum series read per query.",
-							Computed:    true,
+							Description:        "Maximum series read per query. Set for 'single_node' and 'cluster' tiers only.",
+							Computed:           true,
+							DeprecationMessage: "Use metrics.series_read_per_query instead.",
 						},
 						"access_token_concurrent_requests": schema.Int64Attribute{
 							Description: "Maximum concurrent requests per access token.",
 							Computed:    true,
 						},
+						"access_token_limit": schema.Int64Attribute{
+							Description: "Maximum number of access tokens for deployments of this tier.",
+							Computed:    true,
+						},
+						"metrics": schema.SingleNestedAttribute{
+							Description: "Limits of a 'single_node' or 'cluster' tier. Null for other tier types.",
+							Computed:    true,
+							Attributes: map[string]schema.Attribute{
+								"ingestion_rate": schema.Int64Attribute{
+									Description: "Maximum ingestion rate (samples per second).",
+									Computed:    true,
+								},
+								"active_time_series": schema.Int64Attribute{
+									Description: "Maximum number of active time series.",
+									Computed:    true,
+								},
+								"new_series_over_24h": schema.Int64Attribute{
+									Description: "Maximum number of new series over 24 hours.",
+									Computed:    true,
+								},
+								"datapoints_read_rate": schema.Int64Attribute{
+									Description: "Maximum datapoints read rate.",
+									Computed:    true,
+								},
+								"series_read_per_query": schema.Int64Attribute{
+									Description: "Maximum series read per query.",
+									Computed:    true,
+								},
+							},
+						},
+						"logs": schema.SingleNestedAttribute{
+							Description: "Limits of a 'vlogs_single' tier. Null for other tier types.",
+							Computed:    true,
+							Attributes:  streamsTierLimitsAttributes(),
+						},
+						"traces": schema.SingleNestedAttribute{
+							Description: "Limits of a 'vtraces_single' tier. Null for other tier types.",
+							Computed:    true,
+							Attributes:  streamsTierLimitsAttributes(),
+						},
 					},
 				},
 			},
+		},
+	}
+}
+
+// streamsTierLimitsAttributes returns the schema attributes shared by the logs and traces
+// nested objects.
+func streamsTierLimitsAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"ingestion_rate_bytes": schema.Int64Attribute{
+			Description: "Maximum ingestion rate in bytes per second.",
+			Computed:    true,
+		},
+		"active_log_streams": schema.Int64Attribute{
+			Description: "Maximum number of active streams.",
+			Computed:    true,
+		},
+		"new_streams_over_24h": schema.Int64Attribute{
+			Description: "Maximum number of new streams over 24 hours.",
+			Computed:    true,
+		},
+		"data_read_rate": schema.Int64Attribute{
+			Description: "Maximum read rate in bytes per second.",
+			Computed:    true,
+		},
+		"bytes_per_query": schema.Int64Attribute{
+			Description: "Maximum number of bytes scanned per query.",
+			Computed:    true,
 		},
 	}
 }
@@ -133,8 +232,18 @@ func (d *tiersDataSource) Configure(_ context.Context, req datasource.ConfigureR
 // Read refreshes the Terraform state with the latest data.
 func (d *tiersDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var state tiersDataSourceModel
+	diags := req.Config.Get(ctx, &state)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	tiers, err := d.client.ListTiers(ctx)
+	var options []vmcloudapi.ListOption
+	if !state.Type.IsNull() {
+		options = append(options, vmcloudapi.WithDeploymentType(vmcloudapi.DeploymentType(state.Type.ValueString())))
+	}
+
+	tiers, err := d.client.ListTiers(ctx, options...)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Unable to Read Tiers",
@@ -151,17 +260,51 @@ func (d *tiersDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 			CloudProvider:                 types.StringValue(tier.CloudProvider.String()),
 			Name:                          types.StringValue(tier.Name),
 			ComputeCostPerHour:            types.Float64Value(tier.ComputeCostPerHour),
-			IngestionRate:                 types.Int64Value(int64(tier.IngestionRate)),
-			ActiveTimeSeries:              types.Int64Value(int64(tier.ActiveTimeSeries)),
-			NewSeriesOver24h:              types.Int64Value(int64(tier.NewSeriesOver24h)),
-			DatapointsReadRate:            types.Int64Value(int64(tier.DatapointsReadRate)),
-			SeriesReadPerQuery:            types.Int64Value(int64(tier.SeriesReadPerQuery)),
 			AccessTokenConcurrentRequests: types.Int64Value(int64(tier.AccessTokenConcurrentRequests)),
+			AccessTokenLimit:              types.Int64Value(int64(tier.AccessTokenLimit)),
+			IngestionRate:                 types.Int64Null(),
+			ActiveTimeSeries:              types.Int64Null(),
+			NewSeriesOver24h:              types.Int64Null(),
+			DatapointsReadRate:            types.Int64Null(),
+			SeriesReadPerQuery:            types.Int64Null(),
 		}
+
+		switch {
+		case tier.Metrics != nil:
+			tierState.IngestionRate = types.Int64Value(int64(tier.Metrics.IngestionRate))
+			tierState.ActiveTimeSeries = types.Int64Value(int64(tier.Metrics.ActiveTimeSeries))
+			tierState.NewSeriesOver24h = types.Int64Value(int64(tier.Metrics.NewSeriesOver24h))
+			tierState.DatapointsReadRate = types.Int64Value(int64(tier.Metrics.DatapointsReadRate))
+			tierState.SeriesReadPerQuery = types.Int64Value(int64(tier.Metrics.SeriesReadPerQuery))
+			tierState.Metrics = &metricsTierLimitsModel{
+				IngestionRate:      tierState.IngestionRate,
+				ActiveTimeSeries:   tierState.ActiveTimeSeries,
+				NewSeriesOver24h:   tierState.NewSeriesOver24h,
+				DatapointsReadRate: tierState.DatapointsReadRate,
+				SeriesReadPerQuery: tierState.SeriesReadPerQuery,
+			}
+		case tier.Logs != nil:
+			tierState.Logs = &streamsTierLimitsModel{
+				IngestionRateBytes: types.Int64Value(tier.Logs.IngestionRateBytes),
+				ActiveLogStreams:   types.Int64Value(int64(tier.Logs.ActiveLogStreams)),
+				NewStreamsOver24h:  types.Int64Value(int64(tier.Logs.NewStreamsOver24h)),
+				DataReadRate:       types.Int64Value(tier.Logs.DataReadRate),
+				BytesPerQuery:      types.Int64Value(tier.Logs.BytesPerQuery),
+			}
+		case tier.Traces != nil:
+			tierState.Traces = &streamsTierLimitsModel{
+				IngestionRateBytes: types.Int64Value(tier.Traces.IngestionRateBytes),
+				ActiveLogStreams:   types.Int64Value(int64(tier.Traces.ActiveLogStreams)),
+				NewStreamsOver24h:  types.Int64Value(int64(tier.Traces.NewStreamsOver24h)),
+				DataReadRate:       types.Int64Value(tier.Traces.DataReadRate),
+				BytesPerQuery:      types.Int64Value(tier.Traces.BytesPerQuery),
+			}
+		}
+
 		state.Tiers = append(state.Tiers, tierState)
 	}
 
 	// Set state
-	diags := resp.State.Set(ctx, &state)
+	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 }

@@ -25,9 +25,10 @@ Fetches details of a specific VictoriaMetrics Cloud deployment.
 - `cloud_provider` (String) Cloud provider for the deployment.
 - `compute_cost` (Number) Monthly compute cost in USD.
 - `created_at` (String) Timestamp of deployment creation.
-- `deduplication` (Number) Deduplication window.
-- `deduplication_unit` (String) Deduplication window unit.
+- `deduplication` (Number, Deprecated) Deduplication window. Not set for 'vlogs_single' and 'vtraces_single' deployments, which have no deduplication window.
+- `deduplication_unit` (String, Deprecated) Deduplication window unit. Not set for 'vlogs_single' and 'vtraces_single' deployments.
 - `maintenance_window` (String) Maintenance window for the deployment.
+- `metrics` (Attributes) Settings specific to 'single_node' and 'cluster' deployments. Null for other deployment types. (see [below for nested schema](#nestedatt--metrics))
 - `name` (String) Human-readable name of the deployment.
 - `region` (String) Region of the deployment.
 - `retention` (Number) Retention period for metrics.
@@ -37,5 +38,13 @@ Fetches details of a specific VictoriaMetrics Cloud deployment.
 - `storage_size_gb` (Number) Storage size in GB.
 - `tier` (Number) Tier identifier for the deployment.
 - `total_cost` (Number) Total monthly cost in USD.
-- `type` (String) Type of the deployment.
+- `type` (String) Type of the deployment. One of 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces).
 - `version` (String) Version of VictoriaMetrics.
+
+<a id="nestedatt--metrics"></a>
+### Nested Schema for `metrics`
+
+Read-Only:
+
+- `deduplication` (Number) Deduplication window for the deployment.
+- `deduplication_unit` (String) Deduplication window unit.
