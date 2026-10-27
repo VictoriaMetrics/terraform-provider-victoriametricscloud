@@ -1,5 +1,5 @@
-github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.2.0 h1:bawnAOLF/KhGSnPO7f76hScyVTfYJHQD1CV0DgOUJ1I=
-github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.2.0/go.mod h1:bhlSUUsV33zP725EMvMkfvLy4JxluYna4x1LKImE10U=
+github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.2.1 h1:06PL0Twh6hM1qiTfU95BrMbzbMbtuY8phRKakFShI2U=
+github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.2.1/go.mod h1:CoA08taKhQcvWgN4uK7yexDPqBwUO2pToLr4xnBUkRo=
 github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/FBatYVw=
 github.com/bufbuild/protocompile v0.14.1/go.mod h1:ppVdAIhbr2H8asPk6k4pY7t9zB1OU5DoEw9xY/FUi1c=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
