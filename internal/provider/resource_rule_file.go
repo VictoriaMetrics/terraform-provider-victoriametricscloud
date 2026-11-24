@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	vmcloudapi "github.com/VictoriaMetrics/victoriametrics-cloud-api-go/v1"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -108,13 +109,14 @@ func (r *ruleFileResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	// Create or update the rule file
-	err := r.client.CreateDeploymentRuleFileContent(
-		ctx,
-		plan.DeploymentID.ValueString(),
-		plan.FileName.ValueString(),
-		plan.Content.ValueString(),
-	)
+	err := retryWhileLocked(ctx, r.client, plan.DeploymentID.ValueString(), func() error {
+		return r.client.CreateDeploymentRuleFileContent(
+			ctx,
+			plan.DeploymentID.ValueString(),
+			plan.FileName.ValueString(),
+			plan.Content.ValueString(),
+		)
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error creating rule file",
@@ -150,6 +152,10 @@ func (r *ruleFileResource) Read(ctx context.Context, req resource.ReadRequest, r
 		state.DeploymentID.ValueString(),
 		state.FileName.ValueString(),
 	)
+	if isNotFound(err) {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Rule File",
@@ -174,13 +180,14 @@ func (r *ruleFileResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	// Update the rule file content
-	err := r.client.UpdateDeploymentRuleFileContent(
-		ctx,
-		plan.DeploymentID.ValueString(),
-		plan.FileName.ValueString(),
-		plan.Content.ValueString(),
-	)
+	err := retryWhileLocked(ctx, r.client, plan.DeploymentID.ValueString(), func() error {
+		return r.client.UpdateDeploymentRuleFileContent(
+			ctx,
+			plan.DeploymentID.ValueString(),
+			plan.FileName.ValueString(),
+			plan.Content.ValueString(),
+		)
+	})
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error updating rule file",
@@ -208,12 +215,14 @@ func (r *ruleFileResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 
 	// Delete the rule file
-	err := r.client.DeleteDeploymentRuleFile(
-		ctx,
-		state.DeploymentID.ValueString(),
-		state.FileName.ValueString(),
-	)
-	if err != nil {
+	err := retryWhileLocked(ctx, r.client, state.DeploymentID.ValueString(), func() error {
+		return r.client.DeleteDeploymentRuleFile(
+			ctx,
+			state.DeploymentID.ValueString(),
+			state.FileName.ValueString(),
+		)
+	})
+	if err != nil && !isNotFound(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting rule file",
 			"Could not delete rule file, unexpected error: "+err.Error(),
@@ -242,4 +251,29 @@ func (r *ruleFileResource) ImportState(ctx context.Context, req resource.ImportS
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("deployment_id"), parts[0])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("file_name"), parts[1])...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+}
+
+// retryWhileLocked calls fn until the API stops answering that the deployment is
+// locked, which it does while the deployment is being provisioned or updated. It
+// gives up when the deployment has failed, since a failed deployment stays locked,
+// or when deploymentWaitTimeout passes.
+func retryWhileLocked(ctx context.Context, client *vmcloudapi.VMCloudAPIClient, deploymentID string, fn func() error) error {
+	waitCtx, cancel := context.WithTimeout(ctx, deploymentWaitTimeout)
+	defer cancel()
+	for {
+		err := fn()
+		if !isLocked(err) {
+			return err
+		}
+		deployment, getErr := client.GetDeploymentDetails(waitCtx, deploymentID)
+		if getErr == nil && (deployment.Status == vmcloudapi.DeploymentStatusError || deployment.Status == vmcloudapi.DeploymentStatusStopped) {
+			return fmt.Errorf("%w (deployment is in status %s)", err, deployment.Status)
+		}
+		tflog.Debug(ctx, "deployment is locked, retrying", map[string]any{"id": deploymentID, "error": err.Error()})
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("%w (still locked after %s)", err, deploymentWaitTimeout)
+		case <-time.After(deploymentPollInterval):
+		}
+	}
 }
