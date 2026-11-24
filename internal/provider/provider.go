@@ -137,5 +137,8 @@ func (p *victoriametricsCloudProvider) Resources(_ context.Context) []func() res
 		NewDeploymentResource,
 		NewAccessTokenResource,
 		NewRuleFileResource,
+		NewCustomAlertmanagerResource,
+		NewCloudAlertmanagerResource,
+		NewDeploymentNotifierResource,
 	}
 }

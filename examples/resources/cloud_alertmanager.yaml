@@ -1,0 +1,7 @@
+route:
+  receiver: default
+receivers:
+  - name: default
+    slack_configs:
+      - channel: "#alerts"
+        api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"

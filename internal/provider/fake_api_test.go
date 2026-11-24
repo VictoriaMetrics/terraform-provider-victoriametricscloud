@@ -37,13 +37,16 @@ type fakeAPI struct {
 	mu          sync.Mutex
 	nextID      int
 	deployments map[string]*fakeDeployment
-	tokens      map[string]map[string]vmcloudapi.AccessToken
-	ruleFiles   map[string]map[string]string
+	customAMs   map[string]vmcloudapi.CustomAlertmanager
+	cloudAMs    map[string]vmcloudapi.CloudAlertmanager
 }
 
 type fakeDeployment struct {
-	info  vmcloudapi.DeploymentInfo
-	flags vmcloudapi.DeploymentFlags
+	info      vmcloudapi.DeploymentInfo
+	flags     vmcloudapi.DeploymentFlags
+	notifier  vmcloudapi.DeploymentNotifier
+	tokens    map[string]vmcloudapi.AccessToken
+	ruleFiles map[string]string
 	// provisioningReads is the number of reads left before the deployment is RUNNING.
 	provisioningReads int
 }
@@ -57,8 +60,8 @@ func newFakeAPI(t *testing.T, reportFlags bool) *fakeAPI {
 		reportFlags:       reportFlags,
 		provisioningReads: defaultProvisioningReads,
 		deployments:       map[string]*fakeDeployment{},
-		tokens:            map[string]map[string]vmcloudapi.AccessToken{},
-		ruleFiles:         map[string]map[string]string{},
+		customAMs:         map[string]vmcloudapi.CustomAlertmanager{},
+		cloudAMs:          map[string]vmcloudapi.CloudAlertmanager{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/deployments", api.listDeployments)
@@ -72,6 +75,19 @@ func newFakeAPI(t *testing.T, reportFlags bool) *fakeAPI {
 	mux.HandleFunc("GET /api/v1/deployments/{id}/rule-sets/files/{name}", api.getRuleFile)
 	mux.HandleFunc("POST /api/v1/deployments/{id}/rule-sets/files/{name}", api.putRuleFile)
 	mux.HandleFunc("DELETE /api/v1/deployments/{id}/rule-sets/files/{name}", api.deleteRuleFile)
+	mux.HandleFunc("GET /api/v1/integrations/custom-alertmanagers", api.listCustomAlertmanagers)
+	mux.HandleFunc("POST /api/v1/integrations/custom-alertmanagers", api.createCustomAlertmanager)
+	mux.HandleFunc("GET /api/v1/integrations/custom-alertmanagers/{id}", api.getCustomAlertmanager)
+	mux.HandleFunc("POST /api/v1/integrations/custom-alertmanagers/{id}", api.updateCustomAlertmanager)
+	mux.HandleFunc("DELETE /api/v1/integrations/custom-alertmanagers/{id}", api.deleteCustomAlertmanager)
+	mux.HandleFunc("GET /api/v1/integrations/cloud-alertmanagers", api.listCloudAlertmanagers)
+	mux.HandleFunc("POST /api/v1/integrations/cloud-alertmanagers", api.createCloudAlertmanager)
+	mux.HandleFunc("GET /api/v1/integrations/cloud-alertmanagers/{id}", api.getCloudAlertmanager)
+	mux.HandleFunc("POST /api/v1/integrations/cloud-alertmanagers/{id}", api.updateCloudAlertmanager)
+	mux.HandleFunc("DELETE /api/v1/integrations/cloud-alertmanagers/{id}", api.deleteCloudAlertmanager)
+	mux.HandleFunc("GET /api/v1/deployments/{id}/alerting/notifier", api.getDeploymentNotifier)
+	mux.HandleFunc("POST /api/v1/deployments/{id}/alerting/notifier", api.setDeploymentNotifier)
+	mux.HandleFunc("DELETE /api/v1/deployments/{id}/alerting/notifier", api.deleteDeploymentNotifier)
 	api.server = httptest.NewServer(mux)
 	t.Cleanup(api.server.Close)
 	return api
@@ -127,14 +143,18 @@ func (a *fakeAPI) removeDeployment(id string) {
 func (a *fakeAPI) removeToken(deploymentID, tokenID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	delete(a.tokens[deploymentID], tokenID)
+	if d, ok := a.deployments[deploymentID]; ok {
+		delete(d.tokens, tokenID)
+	}
 }
 
 // removeRuleFile deletes a rule file as if it was deleted outside Terraform.
 func (a *fakeAPI) removeRuleFile(deploymentID, name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	delete(a.ruleFiles[deploymentID], name)
+	if d, ok := a.deployments[deploymentID]; ok {
+		delete(d.ruleFiles, name)
+	}
 }
 
 // details returns what the API reports for d.
@@ -295,8 +315,8 @@ func (a *fakeAPI) createToken(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	deploymentID := r.PathValue("id")
-	if _, ok := a.deployments[deploymentID]; !ok {
+	d, ok := a.deployments[r.PathValue("id")]
+	if !ok {
 		writeError(w, http.StatusNotFound, "deployment not found")
 		return
 	}
@@ -310,17 +330,22 @@ func (a *fakeAPI) createToken(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		TenantID:    req.TenantID,
 	}
-	if a.tokens[deploymentID] == nil {
-		a.tokens[deploymentID] = map[string]vmcloudapi.AccessToken{}
+	if d.tokens == nil {
+		d.tokens = map[string]vmcloudapi.AccessToken{}
 	}
-	a.tokens[deploymentID][token.ID] = token
+	d.tokens[token.ID] = token
 	writeJSON(w, http.StatusOK, token)
 }
 
 func (a *fakeAPI) getToken(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	token, ok := a.tokens[r.PathValue("id")][r.PathValue("token")]
+	d, ok := a.deployments[r.PathValue("id")]
+	if !ok {
+		writeError(w, http.StatusNotFound, "no such token %s", r.PathValue("token"))
+		return
+	}
+	token, ok := d.tokens[r.PathValue("token")]
 	if !ok {
 		writeError(w, http.StatusNotFound, "no such token %s", r.PathValue("token"))
 		return
@@ -331,19 +356,29 @@ func (a *fakeAPI) getToken(w http.ResponseWriter, r *http.Request) {
 func (a *fakeAPI) deleteToken(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	deploymentID, tokenID := r.PathValue("id"), r.PathValue("token")
-	if _, ok := a.tokens[deploymentID][tokenID]; !ok {
+	d, ok := a.deployments[r.PathValue("id")]
+	tokenID := r.PathValue("token")
+	if !ok {
 		writeError(w, http.StatusNotFound, "no such token %s", tokenID)
 		return
 	}
-	delete(a.tokens[deploymentID], tokenID)
+	if _, ok := d.tokens[tokenID]; !ok {
+		writeError(w, http.StatusNotFound, "no such token %s", tokenID)
+		return
+	}
+	delete(d.tokens, tokenID)
 	writeJSON(w, http.StatusOK, map[string]string{})
 }
 
 func (a *fakeAPI) getRuleFile(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	content, ok := a.ruleFiles[r.PathValue("id")][r.PathValue("name")]
+	d, ok := a.deployments[r.PathValue("id")]
+	if !ok {
+		writeError(w, http.StatusNotFound, "file %s not found", r.PathValue("name"))
+		return
+	}
+	content, ok := d.ruleFiles[r.PathValue("name")]
 	if !ok {
 		writeError(w, http.StatusNotFound, "file %s not found", r.PathValue("name"))
 		return
@@ -364,8 +399,7 @@ func (a *fakeAPI) putRuleFile(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	deploymentID := r.PathValue("id")
-	d, ok := a.deployments[deploymentID]
+	d, ok := a.deployments[r.PathValue("id")]
 	if !ok {
 		writeError(w, http.StatusNotFound, "deployment not found")
 		return
@@ -376,21 +410,280 @@ func (a *fakeAPI) putRuleFile(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusLocked, "Cannot modify component params. Resource in provisioning state. Retry request later or create support ticket.")
 		return
 	}
-	if a.ruleFiles[deploymentID] == nil {
-		a.ruleFiles[deploymentID] = map[string]string{}
+	if d.ruleFiles == nil {
+		d.ruleFiles = map[string]string{}
 	}
-	a.ruleFiles[deploymentID][r.PathValue("name")] = string(body)
+	d.ruleFiles[r.PathValue("name")] = string(body)
 	writeJSON(w, http.StatusOK, map[string]string{})
 }
 
 func (a *fakeAPI) deleteRuleFile(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	deploymentID, name := r.PathValue("id"), r.PathValue("name")
-	if _, ok := a.ruleFiles[deploymentID][name]; !ok {
+	d, ok := a.deployments[r.PathValue("id")]
+	name := r.PathValue("name")
+	if !ok {
 		writeError(w, http.StatusNotFound, "file %s not found", name)
 		return
 	}
-	delete(a.ruleFiles[deploymentID], name)
+	if _, ok := d.ruleFiles[name]; !ok {
+		writeError(w, http.StatusNotFound, "file %s not found", name)
+		return
+	}
+	delete(d.ruleFiles, name)
+	writeJSON(w, http.StatusOK, map[string]string{})
+}
+
+// removeCustomAlertmanager deletes a custom Alertmanager notifier as if it was deleted outside Terraform.
+func (a *fakeAPI) removeCustomAlertmanager(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.customAMs, id)
+	a.clearNotifierLocked(id)
+}
+
+// removeCloudAlertmanager deletes a cloud Alertmanager notifier as if it was deleted outside Terraform.
+func (a *fakeAPI) removeCloudAlertmanager(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.cloudAMs, id)
+	a.clearNotifierLocked(id)
+}
+
+func (a *fakeAPI) clearNotifierLocked(notifierID string) {
+	for _, d := range a.deployments {
+		if d.notifier.NotifierID == notifierID {
+			d.notifier = vmcloudapi.DeploymentNotifier{}
+		}
+	}
+}
+
+func (a *fakeAPI) listCustomAlertmanagers(w http.ResponseWriter, _ *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	list := vmcloudapi.CustomAlertmanagersList{}
+	for _, am := range a.customAMs {
+		list = append(list, am)
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (a *fakeAPI) createCustomAlertmanager(w http.ResponseWriter, r *http.Request) {
+	var req vmcloudapi.CustomAlertmanagerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: %s", err)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.nextID++
+	am := vmcloudapi.CustomAlertmanager{
+		ID:          fmt.Sprintf("custom-am-%d", a.nextID),
+		Name:        req.Name,
+		URL:         req.URL,
+		AuthType:    req.AuthType,
+		Username:    req.Username,
+		Password:    req.Password,
+		BearerToken: req.BearerToken,
+		Status:      vmcloudapi.NotifierStatusUnknown,
+		CreatedAt:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+	a.customAMs[am.ID] = am
+	writeJSON(w, http.StatusOK, am)
+}
+
+func (a *fakeAPI) getCustomAlertmanager(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	am, ok := a.customAMs[r.PathValue("id")]
+	if !ok {
+		writeError(w, http.StatusNotFound, "notifier not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, am)
+}
+
+func (a *fakeAPI) updateCustomAlertmanager(w http.ResponseWriter, r *http.Request) {
+	var req vmcloudapi.CustomAlertmanagerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: %s", err)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	id := r.PathValue("id")
+	am, ok := a.customAMs[id]
+	if !ok {
+		writeError(w, http.StatusNotFound, "notifier not found")
+		return
+	}
+	am.Name = req.Name
+	am.URL = req.URL
+	am.AuthType = req.AuthType
+	am.Username = req.Username
+	am.Password = req.Password
+	am.BearerToken = req.BearerToken
+	am.UpdatedAt = time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)
+	a.customAMs[id] = am
+	for _, d := range a.deployments {
+		if d.notifier.NotifierID == id {
+			d.notifier.NotifierName = am.Name
+		}
+	}
+	writeJSON(w, http.StatusOK, am)
+}
+
+func (a *fakeAPI) deleteCustomAlertmanager(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	id := r.PathValue("id")
+	if _, ok := a.customAMs[id]; !ok {
+		writeError(w, http.StatusNotFound, "notifier not found")
+		return
+	}
+	delete(a.customAMs, id)
+	a.clearNotifierLocked(id)
+	writeJSON(w, http.StatusOK, map[string]string{})
+}
+
+func (a *fakeAPI) listCloudAlertmanagers(w http.ResponseWriter, _ *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	list := vmcloudapi.CloudAlertmanagersList{}
+	for _, am := range a.cloudAMs {
+		list = append(list, am)
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (a *fakeAPI) createCloudAlertmanager(w http.ResponseWriter, r *http.Request) {
+	var req vmcloudapi.CloudAlertmanagerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: %s", err)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.nextID++
+	am := vmcloudapi.CloudAlertmanager{
+		ID:        fmt.Sprintf("cloud-am-%d", a.nextID),
+		Name:      req.Name,
+		Config:    req.Config,
+		Status:    vmcloudapi.NotifierStatusUnknown,
+		CreatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+	}
+	a.cloudAMs[am.ID] = am
+	writeJSON(w, http.StatusOK, am)
+}
+
+func (a *fakeAPI) getCloudAlertmanager(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	am, ok := a.cloudAMs[r.PathValue("id")]
+	if !ok {
+		writeError(w, http.StatusNotFound, "notifier not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, am)
+}
+
+func (a *fakeAPI) updateCloudAlertmanager(w http.ResponseWriter, r *http.Request) {
+	var req vmcloudapi.CloudAlertmanagerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: %s", err)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	id := r.PathValue("id")
+	am, ok := a.cloudAMs[id]
+	if !ok {
+		writeError(w, http.StatusNotFound, "notifier not found")
+		return
+	}
+	am.Name = req.Name
+	am.Config = req.Config
+	am.UpdatedAt = time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)
+	a.cloudAMs[id] = am
+	for _, d := range a.deployments {
+		if d.notifier.NotifierID == id {
+			d.notifier.NotifierName = am.Name
+		}
+	}
+	writeJSON(w, http.StatusOK, am)
+}
+
+func (a *fakeAPI) deleteCloudAlertmanager(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	id := r.PathValue("id")
+	if _, ok := a.cloudAMs[id]; !ok {
+		writeError(w, http.StatusNotFound, "notifier not found")
+		return
+	}
+	delete(a.cloudAMs, id)
+	a.clearNotifierLocked(id)
+	writeJSON(w, http.StatusOK, map[string]string{})
+}
+
+func (a *fakeAPI) getDeploymentNotifier(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	d, ok := a.deployments[r.PathValue("id")]
+	if !ok {
+		writeError(w, http.StatusNotFound, "deployment not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, d.notifier)
+}
+
+func (a *fakeAPI) setDeploymentNotifier(w http.ResponseWriter, r *http.Request) {
+	var req vmcloudapi.DeploymentNotifierRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body: %s", err)
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	d, ok := a.deployments[r.PathValue("id")]
+	if !ok {
+		writeError(w, http.StatusNotFound, "deployment not found")
+		return
+	}
+	var name string
+	switch req.NotifierType {
+	case vmcloudapi.NotifierTypeCustomAlertmanager:
+		am, ok := a.customAMs[req.NotifierID]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "custom alertmanager %q not found", req.NotifierID)
+			return
+		}
+		name = am.Name
+	case vmcloudapi.NotifierTypeCloudAlertmanager:
+		am, ok := a.cloudAMs[req.NotifierID]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "cloud alertmanager %q not found", req.NotifierID)
+			return
+		}
+		name = am.Name
+	default:
+		writeError(w, http.StatusBadRequest, "unsupported notifier_type %q", req.NotifierType)
+		return
+	}
+	d.notifier = vmcloudapi.DeploymentNotifier{NotifierID: req.NotifierID, NotifierType: req.NotifierType, NotifierName: name}
+	writeJSON(w, http.StatusOK, d.notifier)
+}
+
+func (a *fakeAPI) deleteDeploymentNotifier(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	d, ok := a.deployments[r.PathValue("id")]
+	if !ok {
+		writeError(w, http.StatusNotFound, "deployment not found")
+		return
+	}
+	d.notifier = vmcloudapi.DeploymentNotifier{}
 	writeJSON(w, http.StatusOK, map[string]string{})
 }
