@@ -67,28 +67,28 @@ func (r *accessTokenResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Description: "ID of the deployment this token belongs to.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"type": schema.StringAttribute{
 				Description: "Access mode of the token. Valid values: 'r' (read-only), 'w' (write-only), 'rw' (read-write).",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"description": schema.StringAttribute{
 				Description: "Human-readable description of the access token.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"tenant_id": schema.StringAttribute{
 				Description: "Optional tenant ID for cluster deployments (format: accountID or accountID:projectID).",
 				Optional:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"secret": schema.StringAttribute{
@@ -171,6 +171,7 @@ func (r *accessTokenResource) Create(ctx context.Context, req resource.CreateReq
 	plan.Secret = types.StringValue(token.Secret)
 	plan.CreatedBy = types.StringValue(token.CreatedBy)
 	plan.CreatedAt = types.StringValue(token.CreatedAt.Format(time.RFC3339))
+	plan.LastUsedAt = types.StringNull()
 	if token.LastUsedAt != nil {
 		plan.LastUsedAt = types.StringValue(token.LastUsedAt.Format(time.RFC3339))
 	}
@@ -193,6 +194,11 @@ func (r *accessTokenResource) Read(ctx context.Context, req resource.ReadRequest
 	// Get refreshed token value from API
 	// Note: We use the reveal endpoint to get the full secret
 	token, err := r.client.RevealDeploymentAccessToken(ctx, state.DeploymentID.ValueString(), state.ID.ValueString())
+	if isNotFound(err) {
+		// Deleted outside Terraform: drop it from state so the next plan recreates it.
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Access Token",
@@ -220,7 +226,7 @@ func (r *accessTokenResource) Read(ctx context.Context, req resource.ReadRequest
 	resp.Diagnostics.Append(diags...)
 }
 
-// Update is not supported for access tokens (requires replacement).
+// Update is never called: every configurable attribute requires replacement.
 func (r *accessTokenResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// Access tokens cannot be updated, they require replacement
 	resp.Diagnostics.AddError(
@@ -240,7 +246,7 @@ func (r *accessTokenResource) Delete(ctx context.Context, req resource.DeleteReq
 
 	// Delete the access token
 	err := r.client.DeleteDeploymentAccessToken(ctx, state.DeploymentID.ValueString(), state.ID.ValueString())
-	if err != nil {
+	if err != nil && !isNotFound(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting access token",
 			"Could not delete access token, unexpected error: "+err.Error(),

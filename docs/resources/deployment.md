@@ -17,25 +17,25 @@ Manages a VictoriaMetrics Cloud deployment.
 
 ### Required
 
-- `cloud_provider` (String) Cloud provider for the deployment. Valid values: 'aws'.
+- `cloud_provider` (String) Cloud provider for the deployment. Valid values: 'aws'. Changing it replaces the deployment.
 - `maintenance_window` (String) Maintenance window for the deployment. Valid values: 'Sat-Sun 3-4am', 'Mon-Fri 4-5am'.
 - `name` (String) Human-readable name of the deployment.
-- `region` (String) Region of the deployment in the cloud provider.
+- `region` (String) Region of the deployment in the cloud provider. Changing it replaces the deployment.
 - `retention` (Number) Retention period for metrics.
 - `retention_unit` (String) Retention period unit. Valid values: 'd' (days), 'm' (months).
 - `storage_size` (Number) Storage size in units specified in storage_size_unit.
 - `storage_size_unit` (String) Storage size unit. Valid values: 'GB', 'TB'.
 - `tier` (Number) Tier identifier for the deployment.
-- `type` (String) Type of the deployment. Valid values: 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces).
+- `type` (String) Type of the deployment. Valid values: 'single_node', 'cluster', 'vlogs_single' (VictoriaLogs), 'vtraces_single' (VictoriaTraces). Changing it replaces the deployment.
 
 ### Optional
 
-- `deduplication` (Number, Deprecated) Deduplication window for the deployment. Required for 'single_node' and 'cluster' deployments; ignored for 'vlogs_single' and 'vtraces_single', which have no deduplication window.
-- `deduplication_unit` (String, Deprecated) Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds). Required for 'single_node' and 'cluster' deployments; ignored for 'vlogs_single' and 'vtraces_single'.
-- `insert_flags` (List of String, Deprecated) Custom command-line flags for the vminsert component.
-- `select_flags` (List of String, Deprecated) Custom command-line flags for the vmselect component.
-- `single_flags` (List of String, Deprecated) Custom command-line flags for the vmsingle component.
-- `storage_flags` (List of String, Deprecated) Custom command-line flags for the vmstorage component.
+- `deduplication` (Number) Deduplication window for the deployment. Required for 'single_node' and 'cluster' deployments; cannot be set for 'vlogs_single' and 'vtraces_single', which have no deduplication window.
+- `deduplication_unit` (String) Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds). Required for 'single_node' and 'cluster' deployments; cannot be set for 'vlogs_single' and 'vtraces_single'.
+- `insert_flags` (List of String) Custom command-line flags for the vminsert component of 'cluster' deployments.
+- `select_flags` (List of String) Custom command-line flags for the vmselect component of 'cluster' deployments.
+- `single_flags` (List of String) Custom command-line flags for the single component of 'single_node', 'vlogs_single' and 'vtraces_single' deployments. The API accepts flags only after a deployment is created, so creating a deployment with flags waits until it is running.
+- `storage_flags` (List of String) Custom command-line flags for the vmstorage component of 'cluster' deployments.
 
 ### Read-Only
 
@@ -72,4 +72,4 @@ Read-Only:
 
 Read-Only:
 
-- `flags` (List of String) Custom command-line flags for the vmsingle component.
+- `flags` (List of String) Custom command-line flags for the single component.
