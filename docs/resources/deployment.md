@@ -30,12 +30,12 @@ Manages a VictoriaMetrics Cloud deployment.
 
 ### Optional
 
-- `deduplication` (Number) Deduplication window for the deployment. Required for 'single_node' and 'cluster' deployments; cannot be set for 'vlogs_single' and 'vtraces_single', which have no deduplication window.
-- `deduplication_unit` (String) Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds). Required for 'single_node' and 'cluster' deployments; cannot be set for 'vlogs_single' and 'vtraces_single'.
-- `insert_flags` (List of String) Custom command-line flags for the vminsert component of 'cluster' deployments.
-- `select_flags` (List of String) Custom command-line flags for the vmselect component of 'cluster' deployments.
-- `single_flags` (List of String) Custom command-line flags for the single component of 'single_node', 'vlogs_single' and 'vtraces_single' deployments. The API accepts flags only after a deployment is created, so creating a deployment with flags waits until it is running.
-- `storage_flags` (List of String) Custom command-line flags for the vmstorage component of 'cluster' deployments.
+- `deduplication` (Number, Deprecated) Deduplication window for the deployment. Required for 'single_node' and 'cluster' deployments; cannot be set for 'vlogs_single' and 'vtraces_single', which have no deduplication window.
+- `deduplication_unit` (String, Deprecated) Deduplication window unit. Valid values: 'ms' (milliseconds), 's' (seconds). Required for 'single_node' and 'cluster' deployments; cannot be set for 'vlogs_single' and 'vtraces_single'.
+- `insert_flags` (List of String, Deprecated) Custom command-line flags for the vminsert component of 'cluster' deployments.
+- `select_flags` (List of String, Deprecated) Custom command-line flags for the vmselect component of 'cluster' deployments.
+- `single_flags` (List of String, Deprecated) Custom command-line flags for the single component of 'single_node', 'vlogs_single' and 'vtraces_single' deployments. The API accepts flags only after a deployment is created, so creating a deployment with flags waits until it is running.
+- `storage_flags` (List of String, Deprecated) Custom command-line flags for the vmstorage component of 'cluster' deployments.
 
 ### Read-Only
 
