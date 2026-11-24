@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -176,6 +177,9 @@ func (r *deploymentResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"metrics": schema.SingleNestedAttribute{
 				Description: "Settings specific to 'single_node' and 'cluster' deployments. Null for other deployment types.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"deduplication": schema.Int64Attribute{
 						Description: "Deduplication window for the deployment.",
@@ -218,6 +222,9 @@ func (r *deploymentResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"single": schema.SingleNestedAttribute{
 				Description: "Settings specific to 'single_node', 'vlogs_single' and 'vtraces_single' deployments. Null for 'cluster' deployments.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"flags": schema.ListAttribute{
 						Description: "Custom command-line flags for the vmsingle component.",
@@ -229,6 +236,9 @@ func (r *deploymentResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"cluster": schema.SingleNestedAttribute{
 				Description: "Settings specific to 'cluster' deployments. Null for other deployment types.",
 				Computed:    true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
+				},
 				Attributes: map[string]schema.Attribute{
 					"select_flags": schema.ListAttribute{
 						Description: "Custom command-line flags for the vmselect component.",
