@@ -79,6 +79,7 @@ docs: ## Generate documentation
 	@echo "Generating documentation..."
 	@which tfplugindocs > /dev/null || (echo "tfplugindocs not found, installing..." && go install github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@latest)
 	tfplugindocs generate
+	./scripts/gen-readme-tables.sh
 
 deps: ## Download dependencies
 	@echo "Downloading dependencies..."

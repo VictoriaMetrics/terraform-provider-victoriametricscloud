@@ -3,7 +3,7 @@ module github.com/VictoriaMetrics/terraform-provider-victoriametricscloud
 go 1.27.4
 
 require (
-	github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.4.0
+	github.com/VictoriaMetrics/victoriametrics-cloud-api-go v0.5.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
 	github.com/hashicorp/terraform-plugin-log v0.11.0
